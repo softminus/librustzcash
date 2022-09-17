@@ -4,9 +4,8 @@ use zcash_primitives::{
     consensus::{self, BlockHeight},
     memo::MemoBytes,
     sapling::{
-        note_encryption::{
-            try_sapling_note_decryption, try_sapling_output_recovery, PreparedIncomingViewingKey,
-        },
+        keys::PreparedIncomingViewingKey,
+        note_encryption::{try_sapling_note_decryption, try_sapling_output_recovery},
         Note, PaymentAddress,
     },
     transaction::Transaction,

@@ -6,7 +6,8 @@ use memuse::DynamicUsage;
 use std::io::{self, Read, Write};
 
 use zcash_note_encryption::{
-    EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE,
+    EphemeralKeyBytes, KeyedOutput, RecoverableOutput, ShieldedOutput, COMPACT_NOTE_SIZE,
+    ENC_CIPHERTEXT_SIZE, OUT_CIPHERTEXT_SIZE,
 };
 
 use crate::{
@@ -377,7 +378,7 @@ pub struct OutputDescription<Proof> {
     cmu: ExtractedNoteCommitment,
     ephemeral_key: EphemeralKeyBytes,
     enc_ciphertext: [u8; 580],
-    out_ciphertext: [u8; 80],
+    out_ciphertext: [u8; OUT_CIPHERTEXT_SIZE],
     zkproof: Proof,
 }
 
@@ -402,7 +403,7 @@ impl<Proof> OutputDescription<Proof> {
     }
 
     /// Returns the output recovery ciphertext.
-    pub fn out_ciphertext(&self) -> &[u8; 80] {
+    pub fn out_ciphertext(&self) -> &[u8; OUT_CIPHERTEXT_SIZE] {
         &self.out_ciphertext
     }
 
@@ -419,7 +420,7 @@ impl<Proof> OutputDescription<Proof> {
         cmu: ExtractedNoteCommitment,
         ephemeral_key: EphemeralKeyBytes,
         enc_ciphertext: [u8; 580],
-        out_ciphertext: [u8; 80],
+        out_ciphertext: [u8; OUT_CIPHERTEXT_SIZE],
         zkproof: Proof,
     ) -> Self {
         OutputDescription {
@@ -443,7 +444,7 @@ impl<Proof> OutputDescription<Proof> {
     pub(crate) fn enc_ciphertext_mut(&mut self) -> &mut [u8; 580] {
         &mut self.enc_ciphertext
     }
-    pub(crate) fn out_ciphertext_mut(&mut self) -> &mut [u8; 80] {
+    pub(crate) fn out_ciphertext_mut(&mut self) -> &mut [u8; OUT_CIPHERTEXT_SIZE] {
         &mut self.out_ciphertext
     }
 }
@@ -458,9 +459,7 @@ impl<Proof: DynamicUsage> DynamicUsage for OutputDescription<Proof> {
     }
 }
 
-impl<P: consensus::Parameters, A> ShieldedOutput<SaplingDomain<P>, ENC_CIPHERTEXT_SIZE>
-    for OutputDescription<A>
-{
+impl<P: consensus::Parameters, A> KeyedOutput<SaplingDomain<P>> for OutputDescription<A> {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         self.ephemeral_key.clone()
     }
@@ -468,9 +467,25 @@ impl<P: consensus::Parameters, A> ShieldedOutput<SaplingDomain<P>, ENC_CIPHERTEX
     fn cmstar_bytes(&self) -> [u8; 32] {
         self.cmu.to_bytes()
     }
+}
 
+impl<P: consensus::Parameters, A> ShieldedOutput<SaplingDomain<P>, ENC_CIPHERTEXT_SIZE>
+    for OutputDescription<A>
+{
     fn enc_ciphertext(&self) -> &[u8; ENC_CIPHERTEXT_SIZE] {
         &self.enc_ciphertext
+    }
+}
+
+impl<P: consensus::Parameters, A> RecoverableOutput<SaplingDomain<P>, ENC_CIPHERTEXT_SIZE>
+    for OutputDescription<A>
+{
+    fn cv(&self) -> &ValueCommitment {
+        &self.cv
+    }
+
+    fn out_ciphertext(&self) -> &[u8; OUT_CIPHERTEXT_SIZE] {
+        &self.out_ciphertext
     }
 }
 
@@ -502,7 +517,7 @@ impl OutputDescription<GrothProofBytes> {
         reader.read_exact(&mut ephemeral_key.0)?;
 
         let mut enc_ciphertext = [0u8; 580];
-        let mut out_ciphertext = [0u8; 80];
+        let mut out_ciphertext = [0u8; OUT_CIPHERTEXT_SIZE];
         reader.read_exact(&mut enc_ciphertext)?;
         reader.read_exact(&mut out_ciphertext)?;
 
@@ -542,7 +557,7 @@ pub struct OutputDescriptionV5 {
     cmu: ExtractedNoteCommitment,
     ephemeral_key: EphemeralKeyBytes,
     enc_ciphertext: [u8; 580],
-    out_ciphertext: [u8; 80],
+    out_ciphertext: [u8; OUT_CIPHERTEXT_SIZE],
 }
 
 memuse::impl_no_dynamic_usage!(OutputDescriptionV5);
@@ -559,7 +574,7 @@ impl OutputDescriptionV5 {
         reader.read_exact(&mut ephemeral_key.0)?;
 
         let mut enc_ciphertext = [0u8; 580];
-        let mut out_ciphertext = [0u8; 80];
+        let mut out_ciphertext = [0u8; OUT_CIPHERTEXT_SIZE];
         reader.read_exact(&mut enc_ciphertext)?;
         reader.read_exact(&mut out_ciphertext)?;
 
@@ -606,9 +621,7 @@ impl<A> From<OutputDescription<A>> for CompactOutputDescription {
     }
 }
 
-impl<P: consensus::Parameters> ShieldedOutput<SaplingDomain<P>, COMPACT_NOTE_SIZE>
-    for CompactOutputDescription
-{
+impl<P: consensus::Parameters> KeyedOutput<SaplingDomain<P>> for CompactOutputDescription {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         self.ephemeral_key.clone()
     }
@@ -616,7 +629,11 @@ impl<P: consensus::Parameters> ShieldedOutput<SaplingDomain<P>, COMPACT_NOTE_SIZ
     fn cmstar_bytes(&self) -> [u8; 32] {
         self.cmu.to_bytes()
     }
+}
 
+impl<P: consensus::Parameters> ShieldedOutput<SaplingDomain<P>, COMPACT_NOTE_SIZE>
+    for CompactOutputDescription
+{
     fn enc_ciphertext(&self) -> &[u8; COMPACT_NOTE_SIZE] {
         &self.enc_ciphertext
     }
@@ -629,6 +646,7 @@ pub mod testing {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use rand::{rngs::StdRng, SeedableRng};
+    use zcash_note_encryption::OUT_CIPHERTEXT_SIZE;
 
     use crate::{
         constants::{SPENDING_KEY_GENERATOR, VALUE_COMMITMENT_RANDOMNESS_GENERATOR},
@@ -700,8 +718,8 @@ pub mod testing {
             enc_ciphertext in vec(any::<u8>(), 580)
                 .prop_map(|v| <[u8;580]>::try_from(v.as_slice()).unwrap()),
             epk in arb_extended_point(),
-            out_ciphertext in vec(any::<u8>(), 80)
-                .prop_map(|v| <[u8;80]>::try_from(v.as_slice()).unwrap()),
+            out_ciphertext in vec(any::<u8>(), OUT_CIPHERTEXT_SIZE)
+                .prop_map(|v| <[u8;OUT_CIPHERTEXT_SIZE]>::try_from(v.as_slice()).unwrap()),
             zkproof in vec(any::<u8>(), GROTH_PROOF_SIZE)
                 .prop_map(|v| <[u8;GROTH_PROOF_SIZE]>::try_from(v.as_slice()).unwrap()),
         ) -> OutputDescription<GrothProofBytes> {

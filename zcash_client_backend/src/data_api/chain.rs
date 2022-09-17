@@ -90,7 +90,7 @@ use zcash_primitives::{
     block::BlockHash,
     consensus::{self, BlockHeight},
     merkle_tree::CommitmentTree,
-    sapling::{note_encryption::PreparedIncomingViewingKey, Nullifier},
+    sapling::{keys::PreparedIncomingViewingKey, Nullifier},
     zip32::Scope,
 };
 

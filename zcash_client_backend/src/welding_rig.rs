@@ -9,9 +9,8 @@ use zcash_primitives::{
     consensus,
     merkle_tree::{CommitmentTree, IncrementalWitness},
     sapling::{
-        self,
-        note_encryption::{PreparedIncomingViewingKey, SaplingDomain},
-        Node, Note, Nullifier, NullifierDerivingKey, SaplingIvk,
+        self, keys::PreparedIncomingViewingKey, note_encryption::SaplingDomain, Node, Note,
+        Nullifier, NullifierDerivingKey, SaplingIvk,
     },
     transaction::components::sapling::CompactOutputDescription,
     zip32::{sapling::DiversifiableFullViewingKey, AccountId, Scope},
@@ -401,7 +400,8 @@ mod tests {
         memo::MemoBytes,
         merkle_tree::CommitmentTree,
         sapling::{
-            note_encryption::{sapling_note_encryption, PreparedIncomingViewingKey, SaplingDomain},
+            keys::PreparedIncomingViewingKey,
+            note_encryption::{sapling_note_encryption, SaplingDomain},
             util::generate_random_rseed,
             value::NoteValue,
             Note, Nullifier, SaplingIvk,
