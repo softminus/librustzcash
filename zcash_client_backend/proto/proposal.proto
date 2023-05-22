@@ -1,0 +1,228 @@
+// Copyright (c) 2023 The Zcash developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
+
+syntax = "proto3";
+package cash.z.wallet.sdk.ffi;
+
+
+/// A data structure that describes the inputs to be consumed and outputs to
+/// be produced in a proposed transaction.
+// pub struct Proposal<FeeRuleT, NoteRef> {
+//     transaction_request: TransactionRequest,
+//     transparent_inputs: Vec<WalletTransparentOutput>,
+//     sapling_inputs: Vec<SpendableNote<NoteRef>>,
+//     balance: TransactionBalance,
+//     fee_rule: FeeRuleT,
+//     target_height: BlockHeight,
+//     is_shielding: bool,
+// }
+
+message Proposal {
+    uint32 protoVersion = 1;
+    TransactionRequest transactionRequest = 2;
+    repeated TransparentUTXO transparentInputs = 3;
+    repeated SaplingNote saplingInputs = 4;
+    TransactionBalance balance = 5;
+    FeeRule feeRule = 6;
+    uint64 targetHeight = 7;
+    bool isShielding = 8; // true if wallet-internal
+}
+
+enum FeeRule {
+    Fixed = 0;
+    Zip317 = 1;
+}
+
+/// A ZIP321 transaction request.
+///
+/// A ZIP 321 request may include one or more such requests for payment.
+/// When constructing a transaction in response to such a request,
+/// a separate output should be added to the transaction for each
+/// payment value in the request.
+// pub struct TransactionRequest {
+//     payments: Vec<Payment>,
+// }
+message TransactionRequest {
+    repeated Payment payments = 1;
+}
+
+// /// A single payment being requested.
+// #[derive(Debug, PartialEq)]
+// pub struct Payment {
+//     /// The payment address to which the payment should be sent.
+//     pub recipient_address: RecipientAddress,
+//     /// The amount of the payment that is being requested.
+//     pub amount: Amount,
+//     /// A memo that, if included, must be provided with the payment.
+//     /// If a memo is present and [`recipient_address`] is not a shielded
+//     /// address, the wallet should report an error.
+//     ///
+//     /// [`recipient_address`]: #structfield.recipient_address
+//     pub memo: Option<MemoBytes>,
+//     /// A human-readable label for this payment within the larger structure
+//     /// of the transaction request.
+//     pub label: Option<String>,
+//     /// A human-readable message to be displayed to the user describing the
+//     /// purpose of this payment.
+//     pub message: Option<String>,
+//     /// A list of other arbitrary key/value pairs associated with this payment.
+//     pub other_params: Vec<(String, String)>,
+// }
+
+
+// Amount is an i64: https://github.com/zcash/librustzcash/blob/f293526aa25bd4d813adc30e3c17403ec64f62ee/zcash_primitives/src/transaction/components/amount.rs#L25
+// we already have ZIP321 serialized format for Payments? we won't do this.
+
+message Payment {
+    RecipientAddress recipientAddress = 1;
+    int64 amount = 2;
+    optional MemoBytes memo = 3;
+    optional string label = 4;
+    optional string message = 5;
+    repeated KeyValuePair otherParams = 6;
+}
+
+message MemoBytes {
+    bytes bytes = 1;
+}
+
+message KeyValuePair {
+    string key = 1;
+    string value = 2;
+}
+
+// /// An address that funds can be sent to.
+// // TODO: rename to ParsedAddress
+// #[derive(Debug, PartialEq, Clone)]
+// pub enum RecipientAddress {
+//     Shielded(PaymentAddress),
+//     Transparent(TransparentAddress),
+//     Unified(UnifiedAddress),
+// }
+
+message RecipientAddress {
+    oneof address {
+        SaplingAddress shielded = 1;
+        TransparentAddress transparent = 2;
+        UnifiedAddress unified = 3;
+    }
+}
+
+// We don't break down Sapling addresses into their cryptographic components here
+// instead, we use from_bytes/to_bytes
+
+message SaplingAddress {
+    string value = 1;
+}
+
+// I think it makes more sense to express the transparent address type this way,
+// since serializing/deserializing it with decode_transparent_address / encode_transparent_address
+// requires feeding in b58_pubkey_address_prefix and b58_script_address_prefix, which might complicate affairs
+
+// /// A transparent address corresponding to either a public key or a `Script`.
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub enum TransparentAddress {
+//     PublicKey([u8; 20]), // TODO: Rename to PublicKeyHash
+//     Script([u8; 20]),    // TODO: Rename to ScriptHash
+// }
+
+message TransparentAddress {
+    string value = 1;
+}
+
+
+// /// A Unified Address.
+// #[derive(Clone, Debug, PartialEq, Eq)]
+// pub struct UnifiedAddress {
+//     orchard: Option<orchard::Address>,
+//     sapling: Option<PaymentAddress>,
+//     transparent: Option<TransparentAddress>,
+//     unknown: Vec<(u32, Vec<u8>)>,
+// }
+message UnifiedAddress {
+    string value = 1;
+}
+
+
+
+// pub struct WalletTransparentOutput {
+//     outpoint: OutPoint,
+//     txout: TxOut,
+//     height: BlockHeight,
+//     recipient_address: TransparentAddress,
+// }
+
+message TransparentUTXO {
+    OutPoint outpoint = 1;
+    int64 zatoshis = 2;
+    TransparentAddress recipientAddress = 3; // we keep this to inform the client as to which address the UTXO is associated with (for privacy purposes)
+}
+
+
+// pub struct OutPoint {
+//     hash: [u8; 32],
+//     n: u32,
+// }
+message OutPoint {
+    bytes txid = 1;
+    uint32 index = 2;
+}
+
+
+
+
+// /// Information about a note that is tracked by the wallet that is available for spending,
+// /// with sufficient information for use in note selection.
+// pub struct SpendableNote<NoteRef> {
+//     pub note_id: NoteRef,
+//     pub diversifier: Diversifier,
+//     pub note_value: Amount,
+//     pub rseed: Rseed,
+//     pub witness: IncrementalWitness<Node>,
+// }
+
+message SaplingNote {
+    OutPoint outpoint = 1;
+    int64 zatoshis = 2;
+}
+
+// we don't need to include the address because it won't violate privacy regardless
+
+
+// /// The amount of change and fees required to make a transaction's inputs and
+// /// outputs balance under a specific fee rule, as computed by a particular
+// /// [`ChangeStrategy`] that is aware of that rule.
+// #[derive(Clone, Debug, PartialEq, Eq)]
+// pub struct TransactionBalance {
+//     proposed_change: Vec<ChangeValue>,
+//     fee_required: Amount,
+//     total: Amount,
+// }
+
+message TransactionBalance {
+    repeated ChangeValue proposedChange = 1; // one of these for each shielded output
+    int64 feeRequired = 2;
+    int64 total = 3;
+}
+
+
+
+// /// A proposed change amount and output pool.
+// #[derive(Clone, Debug, PartialEq, Eq)]
+// pub enum ChangeValue {
+//     Sapling(Amount),
+// }
+
+// since we never create transparent change in light wallets, there isn't a transparent change value, though in the future there will be an orchard change value
+
+message ChangeValue {
+    oneof value {
+        SaplingValue saplingValue = 1;
+    }
+}
+
+message SaplingValue {
+    int64 amount = 1;
+}
+
